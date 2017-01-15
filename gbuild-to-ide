@@ -145,6 +145,18 @@ class GbuildParser:
             self.modules[module] = moduleDict[module]
         return self
 
+    def find_all_hxx_include(self,listhxx,path):
+        contents_dir=[content for content in os.listdir(path)]
+        for content in contents_dir:
+            fullpath='%s/%s' % (path,content)
+            if os.path.isfile(fullpath):
+                (pathname,ext)=os.path.splitext(fullpath)
+                if ext=='.hxx':
+                    listhxx.append(pathname[46:]) #slice to retrive a relative path
+
+            elif os.path.isdir(fullpath):
+                listhxx = self.find_all_hxx_include(listhxx,fullpath)
+        return listhxx
 
 
 
@@ -1687,6 +1699,9 @@ def get_options():
                         help='the IDE to generate project files for')
     parser.add_argument('--make', dest='makecmd', required=True,
                         help='the command to execute make')
+    #add to debug a new functions
+    parser.add_argument('--debug',dest='debug',required=False,
+                        help='debug the new functions')
     return parser.parse_args()
 
 
@@ -1695,7 +1710,10 @@ if __name__ == '__main__':
     # FIXME: Hack
     if args.makecmd == 'make':
         args.makecmd = '/usr/bin/make'
-
+    #add to debug a new functions
+    if args.debug == 'listhxx':
+        listhxx=[]
+        listhxx=GbuildParser(args.makecmd).find_all_hxx_include(listhxx,os.environ['BUILDDIR'] + '/core/include')
     paths = {}
     generators = {
         # Supported platforms

@@ -57,7 +57,7 @@ class GbuildParser:
     _buildpattern = {'Library': re.compile('Library_(.*)\.mk'),
                      'Executable': re.compile('Executable_(.*)\.mk'),
                      'CppunitTest': re.compile('CppunitTest_(.*)\.mk')}
-
+    _allheaders=[]
     @staticmethod
     def __split_includes(includes):
         foundisystem = GbuildParser._isystempattern.findall(includes)
@@ -99,6 +99,7 @@ class GbuildParser:
 
 
         moduleDict = {}
+        self.find_all_headers()
         for jsontype in ['Library', 'Executable', 'CppunitTest']:
             for jsonfilename in os.listdir(os.path.join(self.workdir, 'GbuildToJson', jsontype)):
                 with open(os.path.join(self.workdir, 'GbuildToJson', jsontype, jsonfilename), 'r') as f:
@@ -141,30 +142,37 @@ class GbuildParser:
                     if not module in moduleDict:
                         moduleDict[module] = {'targets': set(),'headers':{}}
                     moduleDict[module]['targets'] |= set([newObj])
-                    moduleDict[module]['headers'] =self.find_all_headers_in_module(module)
+                    moduleDict[module]['headers'] =self.headers_of(module)
 
 
-        moduleDict['include']={ 'targets': {}, 'headers':self.find_all_headers_in_module('include')}
-
+        moduleDict['include']={ 'targets': set(), 'headers':self.headers_of('include')}
         # sort ['sources'] and ['headers'] for each module
         for module in sorted(moduleDict):
             self.modules[module] = moduleDict[module]
         return self
 
-    def find_all_headers_in_module(self,modulename):
+    def find_all_headers(self):
 
-        cmdResult1=subprocess.Popen(('git', 'ls-files', modulename), cwd=self.srcdir,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        try:
-            cmdResult2=subprocess.check_output(('grep', '-i', '-E', '".*\.hxx$|.*\.h$|.*\.hpp$"'),cwd=self.srcdir,stdin=cmdResult1.stdout,stderr=subprocess.PIPE)
+        cmdResult1=subprocess.Popen(('git', 'ls-files'), cwd=self.srcdir,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        cmdResult2=subprocess.check_output(('grep', '-i', '-E', '".*\.hxx$|.*\.h$|.*\.hpp$"'),cwd=self.srcdir,stdin=cmdResult1.stdout,stderr=subprocess.PIPE)
 
-            #decode from byte to string
-            allfiles=[]
-            for file in cmdResult2.splitlines():
-                allfiles.append(file.decode()[len(modulename)+1:])
-            return allfiles
-        except subprocess.CalledProcessError as e:
-            return[]
-            #catch the error when there aren't hxx,h,hpp files in that module (like smoketest)
+        #decode from byte to string
+        allfiles={}
+        for file in cmdResult2.splitlines():
+            strfile=file.decode()
+            modulename=strfile.split('/')[0]
+            if not modulename in allfiles:
+                allfiles[modulename]=[]
+            modulename_len=len(modulename)
+            allfiles[modulename].append(strfile[modulename_len + 1:])
+        self._allheaders = allfiles
+
+    def headers_of(self,modulename):
+        if modulename in self._allheaders:
+            headersof = self._allheaders[modulename]
+        else:
+            headersof=[]
+        return headersof
 
 class IdeIntegrationGenerator:
 
@@ -1675,8 +1683,9 @@ if __name__ == '__main__':
     # FIXME: Hack
     if args.makecmd == 'make':
         args.makecmd = '/usr/bin/make'
-
-
+    if args.debug=='allheaders':
+        #headers=GbuildParser(args.makecmd).find_all_headers()
+        pass
     paths = {}
     generators = {
         # Supported platforms
